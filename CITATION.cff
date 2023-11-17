@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this IQA model, please cite it as below."
+authors:
+    - family-names: "MinghaoLiu"
+      given-names: "MinghaoLiu"
+      orcid: ""
+title: "AugmentIQ: Revolutionizing Image Quality Assessment with Advanced Data Augmentation and Dynamic Data Loading Techniques"
+version: 0.0.1
+doi: 10.5281/zenodo.1234
+date-released: 2023-11-19
+url: "https://github.com/Learner209/AugmentIQ"
