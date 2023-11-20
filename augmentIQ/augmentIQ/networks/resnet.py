@@ -12,7 +12,6 @@ from typing import Type, Callable, Tuple, Optional, Set, List, Union
 import torch
 import torch.nn as nn
 
-from timm.models._efficientnet_blocks import SqueezeExcite, DepthwiseSeparableConv
 from timm.models.layers import drop_path, trunc_normal_, Mlp, DropPath
 
 
@@ -33,7 +32,7 @@ model_urls = {
     'wide_resnet101_2': 'https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth',
 }
 
- 
+
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
     """3x3 convolution with padding"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
@@ -134,27 +133,23 @@ class Bottleneck(nn.Module):
         return out
 
 
-
 class MultiStageBlock(nn.Module):
-
 
     def __init__(self, inplanes, norm_layer=None):
         super(MultiStageBlock, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
 
-        self.conv1 = nn.Conv2d(inplanes, inplanes//2, kernel_size=1)
-        self.bn1 = norm_layer(inplanes//2)
-        self.conv2 = nn.Conv2d(inplanes//2, inplanes//2, kernel_size=3, padding = 1)
-        self.bn2 = norm_layer(inplanes//2)
-        self.conv3 = nn.Conv2d(inplanes//2, inplanes, kernel_size=1)
+        self.conv1 = nn.Conv2d(inplanes, inplanes // 2, kernel_size=1)
+        self.bn1 = norm_layer(inplanes // 2)
+        self.conv2 = nn.Conv2d(inplanes // 2, inplanes // 2, kernel_size=3, padding=1)
+        self.bn2 = norm_layer(inplanes // 2)
+        self.conv3 = nn.Conv2d(inplanes // 2, inplanes, kernel_size=1)
         self.bn3 = norm_layer(inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        
 
     def forward(self, x):
-        
 
         out = self.conv1(x)
         out = self.bn1(out)
@@ -172,6 +167,7 @@ class MultiStageBlock(nn.Module):
         out = torch.flatten(out, 1)
 
         return out
+
 
 class ResNet(nn.Module):
 
@@ -269,6 +265,7 @@ class ResNet(nn.Module):
 
         return x
 
+
 class ResNet_MS(nn.Module):
 
     def __init__(self, block, layers, width=1, in_channel=3, zero_init_residual=False,
@@ -291,7 +288,7 @@ class ResNet_MS(nn.Module):
                              "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
         self.groups = groups
         self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(in_channel, self.inplanes, kernel_size=7, stride=2, padding=3,bias=False)
+        self.conv1 = nn.Conv2d(in_channel, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -300,7 +297,7 @@ class ResNet_MS(nn.Module):
         self.ms_layer0 = MultiStageBlock(self.inplanes, norm_layer=None)
 
         self.layer1 = self._make_layer(block, self.base, layers[0])
-        
+
         self.total_feats += self.inplanes
         self.ms_layer1 = MultiStageBlock(self.inplanes, norm_layer=None)
         self.layer2 = self._make_layer(block, self.base * 2, layers[1], stride=2,
@@ -318,9 +315,7 @@ class ResNet_MS(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.total_feats += self.inplanes
 
-        self.fc_out = nn.Linear(self.total_feats,self.inplanes)
-
-        
+        self.fc_out = nn.Linear(self.total_feats, self.inplanes)
 
         # comment out fc layer for unsupervised learning, will have another head
         # self.fc = nn.Linear(512 * block.expansion, num_classes)
@@ -368,13 +363,11 @@ class ResNet_MS(nn.Module):
 
     def forward(self, x):
 
-        
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
         y0 = self.ms_layer0(x)
-        
 
         x = self.layer1(x)
         y1 = self.ms_layer1(x)
@@ -389,7 +382,7 @@ class ResNet_MS(nn.Module):
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
 
-        x = torch.cat([y0,y1,y2,y3,x],axis=1)
+        x = torch.cat([y0, y1, y2, y3, x], axis=1)
         x = self.fc_out(x)
 
         return x
@@ -445,6 +438,7 @@ def resnet50(pretrained=False, progress=True, **kwargs):
     return _resnet('resnet50', Bottleneck, [3, 4, 6, 3], pretrained, progress,
                    **kwargs)
 
+
 def resnet50_multistage(pretrained=False, progress=True, **kwargs):
     r"""ResNet-50 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
@@ -453,7 +447,7 @@ def resnet50_multistage(pretrained=False, progress=True, **kwargs):
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     return _resnet_multistage('resnet50_multistage', Bottleneck, [3, 4, 6, 3], pretrained, progress,
-                   **kwargs)
+                              **kwargs)
 
 
 def resnet101(pretrained=False, progress=True, **kwargs):
@@ -466,6 +460,7 @@ def resnet101(pretrained=False, progress=True, **kwargs):
     return _resnet('resnet101', Bottleneck, [3, 4, 23, 3], pretrained, progress,
                    **kwargs)
 
+
 def resnet101_multistage(pretrained=False, progress=True, **kwargs):
     r"""ResNet-101 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
@@ -474,7 +469,7 @@ def resnet101_multistage(pretrained=False, progress=True, **kwargs):
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     return _resnet_multistage('resnet101', Bottleneck, [3, 4, 23, 3], pretrained, progress,
-                   **kwargs)
+                              **kwargs)
 
 
 def resnet152(pretrained=False, progress=True, **kwargs):
@@ -611,9 +606,6 @@ def wide_resnet101_2(pretrained=False, progress=True, **kwargs):
                    pretrained, progress, **kwargs)
 
 
-
-
-
 model_dict = {
     'resnet50': resnet50,
     'resnet101': resnet101,
@@ -627,8 +619,8 @@ model_dict = {
     'resnext152v3': resnext152_64x4d,
     'resnest50': resnest50,
     'resnest101': resnest101,
-    'resnet50_multistage' : resnet50_multistage,
-    'resnet101_multistage' : resnet101_multistage
+    'resnet50_multistage': resnet50_multistage,
+    'resnet101_multistage': resnet101_multistage
 }
 
 

@@ -15,6 +15,9 @@
 
 The official code repository for the paper: **AugmentIQ: Revolutionizing Image Quality Assessment with Advanced Data Augmentation and Dynamic Data Loading Techniques.**
 
+> 📣 Attention please:
+> The README.md file and the paper has been updated, please checkout the newest version! 😉
+
 ## Introduction:
 
 **AugmentIQ** represents a paradigm shift in the realm of Image Quality Assessment (IQA). This innovative model is a fusion of advanced methodologies from Re-IQA, which offers nuanced image quality measurement techniques, and ImageReward, known for its incisive alignment evaluation between images and textual prompts. Unlike traditional models, **AugmentIQ** excels in assessing both the aesthetic and technical quality of images and their semantic congruence with given textual descriptors, embodying a dual-capability framework that marks a significant advancement in automated image evaluation.
@@ -34,8 +37,6 @@ In essence, **AugmentIQ** is more than an addition to the compendium of IQA meth
 
 -   This integration signifies a broader trend in IQA research, one that acknowledges the multi-dimensional nature of image quality in the age of AI and seeks to develop assessment tools that are as dynamic and multifaceted as the images they evaluate.
 
-⦿ **`Performance`**: SAITS outperforms [Re-IQA](https://arxiv.org/abs/2007.08920) on the [AIGC-3k]
-
 ## ❖ Brief Graphical Illustration of Our Methodology
 
 Here we only show the main component of our method: the joint-optimization training approach combining three encoders while frozening their own weights.
@@ -50,6 +51,12 @@ The implementation of SAITS is in dir [`IQAx`](https://github.com/WenjieDu/SAITS
 ## ❖ Development Environment
 
 We run on `Ubuntu 22.04 LTS` with a system configured with a NVIDIA RTX 3090 GPU.
+
+-   Please checkout the dev branch first.
+
+```bash
+git checkout dev
+```
 
 -   Use conda to create a env for **AugmentIQ** and activate it.
 
@@ -136,8 +143,13 @@ The metrics on test dataset is Spearmans Rank Correlation Coefficient(SRCCle), P
 
 | Metrics/Dataset | AIGCIQA-2023(content) | AIGCIQA-2023(text_alignment) | AIGCIQA-3K(content) | AIGCIQA-3K(text_alignment) |
 | :-------------- | :-------------------: | ---------------------------: | ------------------: | -------------------------- |
-| PLCC            |        0.3051         |                       0.5461 |              0.3241 | 0.4032                     |
-| SRCC            |        0.3046         |                       0.4951 |              0.4049 | 0.5251                     |
+| PLCC            |        0.4051         |                       0.5002 |              0.4241 | 0.5523                     |
+| SRCC            |        0.4046         |                       0.4719 |              0.4001 | 0.4956                     |
+
+> 📣 Attention please:
+> I have arrived at some conclusions after running some parameter fine-tuning results, the problem space of different questions can be quite different, so though my two heads(content and quality aware head and text alignment head) are very heavy and took a while to forward a tensor, its performance on transfer learning across datasets(such as AIGCIQA2023,AIGC3k,DiffusionDB,ImageReward,Pick-A-Pic) can be out of expectation, also it is noteworthy that during the process of constructing the dataset, different settings, prompts, rating schemas can make a big difference in outcomes, so according to my opinion, better results can be achieved by training the model from scratch, instead of frozening weights of some pretrained models designed to perform well only on specific datasets and then fine-tuning some final layers.
+
+> Also it is noteworthy that the choices of loss function is also pivotal in the final results, the text to image alignment task can be achieved by training on the SPCC, PLCC metrics directly, but the content and quality related task seldom boasts a well-formulated metrics, we believe that in our task, a better metrics needs to be chosen for better results. 😉
 
 ## ❖ Acknowledgments
 

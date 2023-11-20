@@ -8,6 +8,9 @@ class TrainOptions(BaseOptions):
     def initialize(self, parser):
         parser = BaseOptions.initialize(self, parser)
 
+        parser.add_argument("--dataset_card", type=str, default="AIGC3K", help='dataset_card', choices=["AIGC3K", "AIGCIQA2023"])
+        parser.add_argument("--model_card", type=str, default="text_alignment", choices=["text_alignment", "content_quality_aware"], help='dataset_card')
+
         parser.add_argument('--aug', action="store_true", help='data augmentation for training')
         parser.add_argument('--n_args', type=int, default=2, help='data augmentation for training')
         parser.add_argument('--warm', action='store_true', help='add warm-up setting')

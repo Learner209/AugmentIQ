@@ -73,75 +73,18 @@ class ImageReward(nn.Module):
         self.mean = 0.16717362830052426
         self.std = 1.0333394966054072
 
-        self.reward_head = nn.Sequential(
-            nn.Linear(1, 4),
-            nn.ReLU(),
-            nn.Linear(4, 16),
-            nn.ReLU(),
-            nn.Linear(16, 64),
-            nn.ReLU(),
-            nn.Linear(64, 256),
-            nn.ReLU(),
-            nn.Linear(256, 64),
-            nn.ReLU(),
-            nn.Linear(64, 16),
-            nn.ReLU(),
-            nn.Linear(16, 4),
-            nn.ReLU(),
-            nn.Linear(4, 1)
-        ).to(self.device)
-
-        self.customized_mlp_head = nn.Sequential(
-            nn.Linear(768, 1024),
-            # nn.BatchNorm1d(128),
-            nn.LayerNorm(1024),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(1024, 512),
-            # nn.BatchNorm1d(128),
-            nn.LayerNorm(512),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(512, 256),
-            # nn.BatchNorm1d(128),
-            nn.LayerNorm(256),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(256, 128),
-            # nn.BatchNorm1d(128),
-            nn.LayerNorm(128),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(128, 256),
-            # nn.BatchNorm1d(128),
-            nn.LayerNorm(256),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(256, 512),
-            # nn.BatchNorm1d(128),
-            nn.LayerNorm(512),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(512, 768),
-        ).to(self.device)
-
-        # initial MLP param
-        for name, param in self.customized_mlp_head.named_parameters():
-            if 'weight' in name:
-                nn.init.normal_(param, mean=0.0, std=1.0 / (768))
-            if 'bias' in name:
-                nn.init.constant_(param, val=0)
+        self.preprocess = None
 
         # freeze the weights of the pre-trained models
         for param in self.blip.parameters():
             param.requires_grad = False
         # make the MLP and projection layers differentiable
         for param in self.mlp.parameters():
-            param.requires_grad = True
+            param.requires_grad = False
         for param in self.blip.vision_proj.parameters():
-            param.requires_grad = True
+            param.requires_grad = False
         for param in self.blip.text_proj.parameters():
-            param.requires_grad = True
+            param.requires_grad = False
 
     def forward(self, image_tensor, tokenized_prompt_input_ids, tokenized_prompt_input_attn_mask):
         """Judging the correlation score between images and prompts.
@@ -171,13 +114,11 @@ class ImageReward(nn.Module):
                                              return_dict=True,
                                              )
 
-        txt_features = text_output.last_hidden_state[:, 0, :].float().to(image_tensor.device)  # (feature_dim)
-        rewards = self.customized_mlp_head(txt_features)
-        rewards = self.mlp(rewards)
-        # logger.info(f"The rewards has shape {rewards.shape}")
-        rewards = self.reward_head(rewards) + rewards
+        txt_features = text_output.last_hidden_state[:, 0, :].float()  # (feature_dim)
+        rewards = self.mlp(txt_features)
         rewards = (rewards - self.mean) / self.std
-        rewards = F.normalize(rewards, dim=0)
+        # logger.info(f"rewards:{rewards}")
+
         return rewards
 
     def train_mode(self):
@@ -186,9 +127,9 @@ class ImageReward(nn.Module):
         for param in self.mlp.parameters():
             param.requires_grad = True
         for param in self.blip.vision_proj.parameters():
-            param.requires_grad = True
+            param.requires_grad = False
         for param in self.blip.text_proj.parameters():
-            param.requires_grad = True
+            param.requires_grad = False
 
     def eval_mode(self):
         for param in self.blip.parameters():
@@ -199,6 +140,40 @@ class ImageReward(nn.Module):
             param.requires_grad = False
         for param in self.blip.text_proj.parameters():
             param.requires_grad = False
+
+    def score(self, prompt, image):
+        # text encode
+        text_input = self.blip.tokenizer(prompt, padding='max_length', truncation=True, max_length=35, return_tensors="pt").to(self.device)
+
+        # image encode
+        if isinstance(image, Image.Image):
+            pil_image = image
+        elif isinstance(image, str):
+            if os.path.isfile(image):
+                pil_image = Image.open(image)
+        else:
+            raise TypeError(r'This image parameter type has not been supportted yet. Please pass PIL.Image or file path str.')
+
+        image = self.preprocess(pil_image).unsqueeze(0).to(self.device)
+        image_embeds = self.blip.visual_encoder(image)
+
+        # text encode cross attention with image
+        image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(self.device)
+        text_output = self.blip.text_encoder(text_input.input_ids,
+                                             attention_mask=text_input.attention_mask,
+                                             encoder_hidden_states=image_embeds,
+                                             encoder_attention_mask=image_atts,
+                                             return_dict=True,
+                                             )
+
+        txt_features = text_output.last_hidden_state[:, 0, :].float()  # (feature_dim)
+        rewards = self.mlp(txt_features)
+        rewards = (rewards - self.mean) / self.std
+        
+        rewards = F.normalize(rewards, p=2, dim=1)
+        # logger.info(f"rewards:{rewards}")
+
+        return rewards
 
 
 if __name__ == '__main__':
