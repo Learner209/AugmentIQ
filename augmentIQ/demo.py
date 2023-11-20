@@ -20,6 +20,7 @@ import torch.utils.data.distributed
 import torch.nn.functional as F
 
 from augmentIQ.reiqa_feats import ReIQAFeats
+from augmentIQ.resnet_feats import ResNetfeats
 from augmentIQ.options.train_options import TrainOptions
 
 from ImageReward.ImageReward import ImageReward
@@ -38,10 +39,6 @@ from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
 
-def _convert_image_to_rgb(image):
-    return image.convert("RGB")
-
-
 class IQA_trainer(object):
     def __init__(self, args, setting):
         self.args = args
@@ -57,7 +54,8 @@ class IQA_trainer(object):
     def _build_model(self):
 
         # content_aware_net, quality_aware_net: feat_dim = 128 X 2
-        self.reiqa_net = ReIQAFeats(self.args, device=self.device)
+        # self.reiqa_net = ReIQAFeats(self.args, device=self.device)
+        self.reiqa_net = ResNetfeats(device=self.device)
 
         self.text_alignment_net = ImageReward(ckpt_path=self.args.text_alignment_ckpt_path, med_config=self.args.text_alignment_med_config_path, device=self.device)
         self.text_alignment_tokenizer = self.text_alignment_net.blip.tokenizer
@@ -166,9 +164,9 @@ class IQA_trainer(object):
                     plcc_loss = plcc_metric(pred, true)
 
                     if self.args.model_card == "text_alignment":
-                        loss = - spcc_loss - plcc_loss
+                        loss = criterion(pred, true) - spcc_loss - plcc_loss
                     else:
-                        loss = criterion(pred, true)
+                        loss = criterion(pred, true)  # -spcc_loss - plcc_loss
 
                     train_loss.append(loss.detach().item())
 
@@ -182,7 +180,7 @@ class IQA_trainer(object):
                         logger.info('\tspeed: {:.0f}s/iter; left time: {:.1f}s'.format(speed, left_time))
                         iter_count = 0
                         time_now = time.time()
-
+    
                     loss.backward()
                     optim.step()
 
@@ -210,7 +208,11 @@ class IQA_trainer(object):
             else:
                 state_dict = self.reiqa_net.state_dict()
 
-            torch.save(state_dict, path + '/' + f"{setting}.pth")
+            if not os.path.exists(path):
+                os.makedirs(path)
+            torch.save(state_dict, os.path.join(path, f"{setting}.pth"))
+
+            return
 
     def _process_one_batch(self, batch_meta):
 
@@ -263,10 +265,10 @@ class IQA_trainer(object):
             if self.args.dataset_card == "AIGC3K":
                 batch_mos_quality = batch_meta["mos_quality"].float().unsqueeze(-1).to(self.device)  # bsz X _type_
                 assert batch_mos_quality.dim() == 2 and batch_mos_quality.shape[0] == bsz and batch_mos_quality.shape[-1] == 1, f"{batch_mos_quality.shape}"
-                batch_mos_quality = F.normalize(batch_mos_quality, dim=0)
+                # batch_mos_quality = F.normalize(batch_mos_quality, dim=0)
 
-                batch_std_quality = batch_meta["std_quality"].float().unsqueeze(-1).to(self.device)
-                # batch_std_quality = F.normalize(batch_std_quality, dim=0).reshape(-1, 1)
+                batch_mos_quality = batch_meta["std_quality"].float().unsqueeze(-1).to(self.device)
+                # batch_mos_quality = F.normalize(batch_mos_quality, dim=0).reshape(-1, 1)
 
                 true = batch_mos_quality
             elif self.args.dataset_card == "AIGCIQA2023":
@@ -275,7 +277,7 @@ class IQA_trainer(object):
                 # batch_std_quality_data = F.normalize(batch_std_quality_data, dim=0).reshape(-1, 1)
                 # print(batch_std_quality_data.shape)
                 batch_mos_quality_data = batch_meta["mos_quality_data"].float().to(self.device)  # bsz X _type_
-                batch_mos_quality_data = F.normalize(batch_mos_quality_data, dim=0)
+                # batch_mos_quality_data = F.normalize(batch_mos_quality_data, dim=0)
                 # print(batch_mos_quality_data.shape)
                 batch_mos_authenticity_data = batch_meta["mos_authenticity_data"].float().to(self.device)
                 # batch_mos_authenticity_data = F.normalize(batch_mos_authenticity_data, dim=0).reshape(-1, 1)
@@ -306,11 +308,6 @@ class IQA_trainer(object):
 
         batch_metrics_all = np.stack(batch_metrics_all, axis=0)
         batch_metrics_all = batch_metrics_all.sum(axis=0) / instance_num
-
-        # result save
-        folder_path = './forecast_results/' + setting + '/'
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
 
         spcc, plcc = batch_metrics_all
         logger.info(f"In the _____test_____ function metrics ->: spcc:{spcc}, plcc:{plcc}")

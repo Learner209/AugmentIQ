@@ -85,6 +85,10 @@ def _convert_image_to_rgb(image):
     return image.convert("RGB")
 
 
+def _convert_image_to_bgr(image):
+    return image.convert("RGB")
+
+
 class AIGC_3K(Dataset):
     def __init__(self, opt, blip_tokenizer, flag="train"):
         """

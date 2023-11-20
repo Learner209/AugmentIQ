@@ -46,7 +46,7 @@ For the detailed description and explanation, please read our full paper if you 
 
 ## ❖ Repository Structure
 
-The implementation of SAITS is in dir [`IQAx`](https://github.com/WenjieDu/SAITS/blob/main/modeling/SA_models.py).Please install it via `pip install -e .` or `python setup.py install`. Due to the time and resource limit, we haven't performed extensive enough parameter finetuning experiments, if you like this repo, please feel free to fork and PR to help us improve it ! 💚 💛 🤎.
+The implementation of AugmentIQ is in dir [`AugmentIQ`](https://github.com/Learner209/AugmentIQ/tree/dev/augmentIQ).Please install it via `pip install -e .` or `python setup.py install`. Due to the time and resource limit, we haven't performed extensive enough parameter finetuning experiments, if you like this repo, please feel free to fork and PR to help us improve it ! 💚 💛 🤎.
 
 ## ❖ Development Environment
 
