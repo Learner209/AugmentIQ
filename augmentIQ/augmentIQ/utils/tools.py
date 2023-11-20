@@ -3,7 +3,8 @@ import torch
 import json
 
 
-def adjust_learning_rate(optimizers, epoch, args):
+
+def adjust_learning_rate(optimizer, epoch, args):
     if args.lradj == 'type1':
         lr_adjust = {2: args.learning_rate * 0.5 ** 1, 4: args.learning_rate * 0.5 ** 2,
                      6: args.learning_rate * 0.5 ** 3, 8: args.learning_rate * 0.5 ** 4,
@@ -16,51 +17,43 @@ def adjust_learning_rate(optimizers, epoch, args):
         lr_adjust = {}
     if epoch in lr_adjust.keys():
         lr = lr_adjust[epoch]
-        for optimizer in optimizers:
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = lr
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
         print('Updating learning rate to {}'.format(lr))
 
 
 class EarlyStopping:
-    def __init__(self, loss_cnt, model_cnt, patience=7, verbose=False, delta=0):
+    def __init__(self, patience=7, verbose=False, delta=0):
         self.patience = patience
         self.verbose = verbose
         self.counter = 0
-        self.best_score = float('inf')
+        self.best_score = None
         self.early_stop = False
-        self.val_loss_min = [np.Inf] * loss_cnt
+        self.val_loss_min = np.Inf
         self.delta = delta
-        self.best_model = [None] * model_cnt
-        self.model_cnt = model_cnt
-        self.loss_cnt = loss_cnt
+        self.best_model = None
 
-    def __call__(self, val_loss_list, model_list, path):
-        assert len(model_list) == self.model_cnt and len(val_loss_list) == self.loss_cnt
-        mean_val_loss = np.mean(val_loss_list)
+    def __call__(self, val_loss, model, path):
+        score = -val_loss
         if self.best_score is None:
-            self.best_score = mean_val_loss
-            self.save_checkpoint(val_loss_list, model_list, path)
-        elif mean_val_loss < self.best_score + self.delta:
+            self.best_score = score
+            self.save_checkpoint(val_loss, model, path)
+        elif score < self.best_score + self.delta:
             self.counter += 1
             print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
             if self.counter >= self.patience:
                 self.early_stop = True
         else:
-            self.best_score = mean_val_loss
-            self.save_checkpoint(val_loss_list, model_list, path)
+            self.best_score = score
+            self.save_checkpoint(val_loss, model, path)
             self.counter = 0
 
-    def save_checkpoint(self, val_loss_list, model_list, path):
-        assert self.model_cnt == len(model_list) and self.loss_cnt == len(val_loss_list)
-
+    def save_checkpoint(self, val_loss, model, path):
         if self.verbose:
-            print(f'Validation loss decreased ({self.val_loss_min} --> {val_loss_list}).  Saving model ...')
-        for i, model in enumerate(model_list):
-            torch.save(model.state_dict(), path + '/' + f'checkpoint_{i}.pth')
-            self.best_model[i] = model
-        for i, loss in enumerate(val_loss_list):
-            self.val_loss_min[i] = loss
+            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+        torch.save(model.state_dict(), path + '/' + 'checkpoint.pth')
+        self.best_model = model
+        self.val_loss_min = val_loss
 
 
 class StandardScaler():

@@ -9,7 +9,6 @@ from torchvision import transforms, datasets
 
 import torch.nn as nn
 
-
 import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -26,7 +25,6 @@ from torchvision import transforms
 from torchvision.models import resnet50
 import torch.optim as optim
 import torch.nn as nn
-
 
 import pandas as pd
 import numpy as np
@@ -45,32 +43,15 @@ import os
 import torch
 import numpy as np
 import random
-from sklearn.model_selection import KFold
-
-import time
-
 import torch.nn as nn
-from torch import optim
 from torch.utils.data import DataLoader
-from torch.nn import DataParallel
-
-import json
-import pickle
 
 from loguru import logger
 
 import os
-import cv2
-import gc
 import numpy as np
 import pandas as pd
-import itertools
-from tqdm.autonotebook import tqdm
-import albumentations as A
-import timm
-from transformers import DistilBertModel, DistilBertConfig, DistilBertTokenizer
 
-# endregion
 import torch
 import torch.nn as nn
 import torch.utils.data.distributed
@@ -81,18 +62,27 @@ sys.path.append("/home/liilu/Desktop/COURSE/Pic_proc/AIGC/BASELINE/augmentIQ")
 
 from augmentIQ.options.train_options import TrainOptions
 from augmentIQ.datasets.iqa_distortions import *
-from einops import rearrange, repeat
 
-
-from augmentIQ.content_aware_feats import ContentAwareFeats
-from augmentIQ.quality_aware_feats import QualityAwareFeats
+from augmentIQ.reiqa_feats import ReIQAFeats
 from ImageReward.ImageReward import ImageReward
 import scipy.io
 
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+
+
 import glob
 import sys
+from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
+try:
+    from torchvision.transforms import InterpolationMode
+    BICUBIC = InterpolationMode.BICUBIC
+except ImportError:
+    BICUBIC = Image.BICUBIC
 
-# region
+
+def _convert_image_to_rgb(image):
+    return image.convert("RGB")
 
 
 class AIGC_3K(Dataset):
@@ -144,10 +134,6 @@ class AIGC_3K(Dataset):
         text_input = self.blip_tokenizer(prompt, padding='max_length', truncation=True, max_length=35, return_tensors="pt")
         assert isinstance(prompt, str)
 
-        # adj1 = "" if not isinstance(self.data_frame.at[idx, "adj1"], str) else self.data_frame.at[idx, "adj1"]
-        # adj2 = "" if not isinstance(self.data_frame.at[idx, "adj2"], str) else self.data_frame.at[idx, "adj2"]
-        # style = "" if not isinstance(self.data_frame.at[idx, "style"], str) else self.data_frame.at[idx, "style"]
-
         mos_quality = self.data_frame.at[idx, "mos_quality"]
         std_quality = self.data_frame.at[idx, "std_quality"]
         mos_align = self.data_frame.at[idx, "mos_align"]
@@ -156,101 +142,23 @@ class AIGC_3K(Dataset):
 
         sample = dict()
 
-        if self.aug:
-            n_args = self.opt.n_args
-            aug_images = self._augment_images(image, n_args)
-            img_list = aug_images
-        else:
-            n_args = 1
-            img_list = [image]
+        transform = transforms.Compose([
+            Resize(224, interpolation=BICUBIC),
+            CenterCrop(224),
+            _convert_image_to_rgb,
+            ToTensor(),
+            Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+        ])
 
-        aug_img_tensors = []
-        if self.transform:
-            for i in range(len(img_list)):
-                img_list[i] = self.transform(img_list[i])
-                aug_img_tensors.append(img_list[i])
+        sample['image'] = transform(image)  # D X C X H X W
 
-        aug_img_tensors = torch.stack(aug_img_tensors, dim=0)
-        # logger.info(f"aug_img_tensors.shape:{aug_img_tensors.shape}")
-
-        sample['image'] = aug_img_tensors  # D X C X H X W
-
-        sample['mos_quality'] = np.tile(mos_quality, self.n_args)  # D
-        sample['std_quality'] = np.tile(std_quality, self.n_args)  # D
-        sample['mos_align'] = np.tile(mos_align, self.n_args)  # D
-        sample['std_align'] = np.tile(std_align, self.n_args)  # D
-        sample['prompt_input_ids'] = text_input.input_ids.expand(self.n_args, -1)  # D X _specify_length_
-        sample['prompt_attention_mask'] = text_input.attention_mask.expand(self.n_args, -1)  # D X _specify_length_
-
+        sample['mos_quality'] = mos_quality  # 1
+        sample['std_quality'] = std_quality  # 1
+        sample['mos_align'] = mos_align  # 1
+        sample['std_align'] = std_align  # 1
+        sample['prompt_input_ids'] = text_input.input_ids.squeeze(0)  # 1 X _specify_length_
+        sample['prompt_attention_mask'] = text_input.attention_mask.squeeze(0)  # 1 X _specify_length_
         return sample
-
-    def _augment_images(self, img, n_args=40):
-        augmentation_lists = []
-        for level in range(0, 4):
-            # Define the transforms
-            augmentation_level_list = [
-                lambda x: imjitter(x, level),
-                lambda x: imblurgauss(x, level),
-                lambda x: imblurlens(x, level),
-                lambda x: imblurmotion(x, level),
-                lambda x: imcolordiffuse(x, level),
-                lambda x: imcolorshift(x, level),
-                lambda x: imcolorsaturate(x, level),
-                lambda x: imsaturate(x, level),
-                lambda x: imcompressjpeg(x, level),
-                lambda x: imnoisegauss(x, level),
-                lambda x: imnoisecolormap(x, level),
-                lambda x: imnoiseimpulse(x, level),
-                lambda x: imnoisemultiplicative(x, level),
-                lambda x: imdenoise(x, level),
-                lambda x: imbrighten(x, level),
-                lambda x: imdarken(x, level),
-                lambda x: immeanshift(x, level),
-                lambda x: imresizedist(x, level),
-                lambda x: imresizedist_bilinear(x, level),
-                lambda x: imresizedist_nearest(x, level),
-                lambda x: imresizedist_lanczos(x, level),
-                lambda x: imsharpenHi(x, level),
-                lambda x: imcontrastc(x, level),
-                lambda x: imcolorblock(x, level),
-                lambda x: impixelate(x, level),
-                lambda x: imnoneccentricity(x, level),
-                # lambda x: imwarpmap(x, np.random.randn(x.size[0], x.size[1], 2)),
-                lambda x: imjitter(x, level),
-            ]
-            augmentation_lists += augmentation_level_list
-
-        # Randomly select n_args augmentation methods from the list
-        selected_augmentations = random.sample(augmentation_lists, n_args)
-
-        # Apply the selected augmentations to the input image
-        augmented_images = []
-        for augmentation in selected_augmentations:
-            augmented_image = augmentation(img)
-            augmented_images.append(augmented_image)
-
-        return augmented_images
-
-
-def build_AIGC_3K(opt, blip_tokenizer, flag="train", transform=None):
-    if flag == 'test':
-        shuffle_flag = False
-        drop_last = False
-        batch_size = opt.batch_size
-    else:
-        shuffle_flag = True
-        drop_last = False
-        batch_size = opt.batch_size
-
-    dataset = AIGC_3K(
-        opt=opt,
-        blip_tokenizer=blip_tokenizer,
-        flag=flag,
-    )
-
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle_flag)
-    return dataset, dataloader
-# endregion
 
 
 class AIGCIQA_2023(Dataset):
@@ -269,9 +177,11 @@ class AIGCIQA_2023(Dataset):
 
         # Define transformations
         transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            Resize(224, interpolation=BICUBIC),
+            CenterCrop(224),
+            _convert_image_to_rgb,
+            ToTensor(),
+            Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
         ])
 
         self.transform = transform
@@ -306,6 +216,9 @@ class AIGCIQA_2023(Dataset):
 
         self.allimg_paths = glob.glob(os.path.join(self.all_img_folder, "*.png"))
         self.total_num = len(self.allimg_paths)
+        del self.allimg_paths
+        assert not hasattr(self, "allimg_paths")
+        assert self.total_num == 2400, f"total_num not 2400, but {self.total_num}"
 
     def __len__(self):
         return self.total_num
@@ -314,94 +227,39 @@ class AIGCIQA_2023(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        img_name = self.allimg_paths[idx]
+        img_name = os.path.join(self.all_img_folder, f"{idx}.png")
         assert os.path.exists(img_name), f"img_name not exists:{img_name}"
         image = Image.open(img_name)
-        prompt_idx = idx % 400 // 4
+        prompt_idx = (idx % 400) // 4
         prompt = self.prompts[prompt_idx]
         text_input = self.blip_tokenizer(prompt, padding='max_length', truncation=True, max_length=35, return_tensors="pt")
-
+        # logger.warning(f"The image path is {img_name} and the idx is {idx} and the prompt idx is {prompt_idx} and the prompt is {prompt}")
         sample = dict()
 
-        if self.aug:
-            n_args = self.opt.n_args
-            aug_images = self._augment_images(image, n_args)
-            img_list = aug_images
-        else:
-            n_args = 1
-            img_list = [image]
+        transform = transforms.Compose([
+            Resize(224, interpolation=BICUBIC),
+            CenterCrop(224),
+            _convert_image_to_rgb,
+            ToTensor(),
+            Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+        ])
 
-        aug_img_tensors = []
-        if self.transform:
-            for i in range(len(img_list)):
-                img_list[i] = self.transform(img_list[i])
-                aug_img_tensors.append(img_list[i])
+        sample['image'] = transform(image)  # C X H X W
 
-        aug_img_tensors = torch.stack(aug_img_tensors, dim=0)
+        sample['mos_quality_data'] = self.mos_quality_data[idx]  # 1
+        sample['mos_authenticity_data'] = self.mos_authenticity_data[idx]  # 1
+        sample['mos_correspondence_data'] = self.mos_correspondence_data[idx]  # 1
+        sample['std_quality_data'] = self.std_quality_data[idx]  # 1
+        sample['std_authenticity_data'] = self.std_authenticity_data[idx]  # 1
+        sample['std_correspondence_data'] = self.std_correspondence_data[idx]  # 1
 
-        sample['image'] = aug_img_tensors  # D X C X H X W
-
-        sample['mos_quality_data'] = np.tile(self.mos_quality_data[idx], self.n_args)  # D,
-        sample['mos_authenticity_data'] = np.tile(self.mos_authenticity_data[idx], self.n_args)  # D,
-        sample['mos_correspondence_data'] = np.tile(self.mos_correspondence_data[idx], self.n_args)  # D,
-        sample['std_quality_data'] = np.tile(self.std_quality_data[idx], self.n_args)  # D,
-        sample['std_authenticity_data'] = np.tile(self.std_authenticity_data[idx], self.n_args)  # D,
-        sample['std_correspondence_data'] = np.tile(self.std_correspondence_data[idx], self.n_args)  # D,
-
-        sample['prompt_input_ids'] = text_input.input_ids.expand(self.n_args, -1)  # D X _specify_length_
-        sample['prompt_attention_mask'] = text_input.attention_mask.expand(self.n_args, -1)  # D X _specify_length_
+        sample['prompt_input_ids'] = text_input.input_ids.squeeze(0)  # 1 X _specify_length_
+        sample['prompt_attention_mask'] = text_input.attention_mask.squeeze(0)  # 1 X _specify_length_
 
         return sample
 
-    def _augment_images(self, img, n_args=40):
-        augmentation_lists = []
-        for level in range(0, 4):
-            # Define the transforms
-            augmentation_level_list = [
-                lambda x: imjitter(x, level),
-                lambda x: imblurgauss(x, level),
-                lambda x: imblurlens(x, level),
-                lambda x: imblurmotion(x, level),
-                lambda x: imcolordiffuse(x, level),
-                lambda x: imcolorshift(x, level),
-                lambda x: imcolorsaturate(x, level),
-                lambda x: imsaturate(x, level),
-                lambda x: imcompressjpeg(x, level),
-                lambda x: imnoisegauss(x, level),
-                lambda x: imnoisecolormap(x, level),
-                lambda x: imnoiseimpulse(x, level),
-                lambda x: imnoisemultiplicative(x, level),
-                lambda x: imdenoise(x, level),
-                lambda x: imbrighten(x, level),
-                lambda x: imdarken(x, level),
-                lambda x: immeanshift(x, level),
-                lambda x: imresizedist(x, level),
-                lambda x: imresizedist_bilinear(x, level),
-                lambda x: imresizedist_nearest(x, level),
-                lambda x: imresizedist_lanczos(x, level),
-                lambda x: imsharpenHi(x, level),
-                lambda x: imcontrastc(x, level),
-                lambda x: imcolorblock(x, level),
-                lambda x: impixelate(x, level),
-                lambda x: imnoneccentricity(x, level),
-                # lambda x: imwarpmap(x, np.random.randn(x.size[0], x.size[1], 2)),
-                lambda x: imjitter(x, level),
-            ]
-            augmentation_lists += augmentation_level_list
 
-        # Randomly select n_args augmentation methods from the list
-        selected_augmentations = random.sample(augmentation_lists, n_args)
-
-        # Apply the selected augmentations to the input image
-        augmented_images = []
-        for augmentation in selected_augmentations:
-            augmented_image = augmentation(img)
-            augmented_images.append(augmented_image)
-
-        return augmented_images
-
-
-def build_AIGCIQA(opt, blip_tokenizer, flag="train", transform=None):
+def build_dataset(opt, blip_tokenizer, flag="train", transform=None, dataset_card="AIGCIQA_2023"):
     if flag == 'test':
         shuffle_flag = False
         drop_last = False
@@ -411,11 +269,18 @@ def build_AIGCIQA(opt, blip_tokenizer, flag="train", transform=None):
         drop_last = False
         batch_size = opt.batch_size
 
-    dataset = AIGCIQA_2023(
-        opt=opt,
-        blip_tokenizer=blip_tokenizer,
-        flag=flag,
-    )
+    if dataset_card == "AIGCIQA2023":
+        dataset = AIGCIQA_2023(
+            opt=opt,
+            blip_tokenizer=blip_tokenizer,
+            flag=flag,
+        )
+    else:
+        dataset = AIGC_3K(
+            opt=opt,
+            blip_tokenizer=blip_tokenizer,
+            flag=flag,
+        )
 
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle_flag)
     return dataset, dataloader
@@ -424,16 +289,12 @@ def build_AIGCIQA(opt, blip_tokenizer, flag="train", transform=None):
 if __name__ == '__main__':
     args = TrainOptions().parse()
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
-    content_aware_net = ContentAwareFeats(ckpt_path=args.content_aware_ckpt_path, device=device)
-    quality_aware_net = QualityAwareFeats(ckpt_path=args.quality_aware_ckpt_path, device=device)
+    content_aware_net = ReIQAFeats(args=args, device=device)
 
-    # text_alignment_net: last_mlp_layer: 768 -> 1
     text_alignment_net = ImageReward(ckpt_path=args.text_alignment_ckpt_path, med_config=args.text_alignment_med_config_path, device=device)
     text_alignment_tokenizer = text_alignment_net.blip.tokenizer
 
-    test_data, test_loader = build_AIGCIQA(args,
-                                           text_alignment_tokenizer,
-                                           flag='test')
+    test_data, test_loader = build_dataset(args, text_alignment_tokenizer, flag='test', dataset_card="AIGCIQA2023")
 
     with torch.no_grad():
         for i, (batch_meta) in enumerate(test_loader):
@@ -445,9 +306,3 @@ if __name__ == '__main__':
             print(batch_mos_authenticity_data.shape)
             batch_mos_correspondence_data = batch_meta["mos_correspondence_data"].float().to(device)
             print(batch_mos_correspondence_data.shape)
-            batch_std_quality_data = batch_meta["std_quality_data"].float().to(device)
-            print(batch_std_quality_data.shape)
-            batch_std_authenticity_data = batch_meta["std_authenticity_data"].float().to(device)
-            print(batch_std_authenticity_data.shape)
-            batch_std_correspondence_data = batch_meta["std_correspondence_data"].float().to(device)
-            print(batch_std_correspondence_data.shape)

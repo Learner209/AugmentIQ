@@ -152,7 +152,7 @@ AIGC-3K/
 AIGCIQA2023/
 
 # ReIQA pretrained model
-**/re-iqa_ckpts/
+**/re-iqa_ckpts
 content_aware_r50.pth
 quality_aware_r50.pth
 *.pt
@@ -163,3 +163,6 @@ test/
 exp/
 # ignore the tensorboard logging directory
 runs/ 
+
+# ignore the ImageReward repo
+ImageReward/
