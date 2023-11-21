@@ -166,7 +166,7 @@ class IQA_trainer(object):
                     if self.args.model_card == "text_alignment":
                         loss = criterion(pred, true) - spcc_loss - plcc_loss
                     else:
-                        loss = criterion(pred, true)  # -spcc_loss - plcc_loss
+                        loss = -spcc_loss - plcc_loss
 
                     train_loss.append(loss.detach().item())
 
@@ -180,7 +180,7 @@ class IQA_trainer(object):
                         logger.info('\tspeed: {:.0f}s/iter; left time: {:.1f}s'.format(speed, left_time))
                         iter_count = 0
                         time_now = time.time()
-    
+
                     loss.backward()
                     optim.step()
 
@@ -265,9 +265,9 @@ class IQA_trainer(object):
             if self.args.dataset_card == "AIGC3K":
                 batch_mos_quality = batch_meta["mos_quality"].float().unsqueeze(-1).to(self.device)  # bsz X _type_
                 assert batch_mos_quality.dim() == 2 and batch_mos_quality.shape[0] == bsz and batch_mos_quality.shape[-1] == 1, f"{batch_mos_quality.shape}"
-                # batch_mos_quality = F.normalize(batch_mos_quality, dim=0)
+                batch_mos_quality = F.normalize(batch_mos_quality, dim=0)
 
-                batch_mos_quality = batch_meta["std_quality"].float().unsqueeze(-1).to(self.device)
+                # batch_mos_quality = batch_meta["std_quality"].float().unsqueeze(-1).to(self.device)
                 # batch_mos_quality = F.normalize(batch_mos_quality, dim=0).reshape(-1, 1)
 
                 true = batch_mos_quality
@@ -277,7 +277,7 @@ class IQA_trainer(object):
                 # batch_std_quality_data = F.normalize(batch_std_quality_data, dim=0).reshape(-1, 1)
                 # print(batch_std_quality_data.shape)
                 batch_mos_quality_data = batch_meta["mos_quality_data"].float().to(self.device)  # bsz X _type_
-                # batch_mos_quality_data = F.normalize(batch_mos_quality_data, dim=0)
+                batch_mos_quality_data = F.normalize(batch_mos_quality_data, dim=0)
                 # print(batch_mos_quality_data.shape)
                 batch_mos_authenticity_data = batch_meta["mos_authenticity_data"].float().to(self.device)
                 # batch_mos_authenticity_data = F.normalize(batch_mos_authenticity_data, dim=0).reshape(-1, 1)
